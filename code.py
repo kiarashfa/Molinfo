@@ -1,29 +1,20 @@
 import streamlit as st
 from rdkit import Chem
-from rdkit.Chem import Descriptors
-from rdkit.Chem import Draw
-from rdkit.Chem.Draw import rdDepictor
+from rdkit.Chem import Descriptors, AllChem
 
 st.set_page_config(page_title="Molecular Info", page_icon="🧪", layout="wide")
 
-def mol_to_svg(mol):
-    """Convert molecule to SVG string"""
-    rdDepictor.Compute2DCoords(mol)
-    drawer = Draw.rdMolDraw2D.MolDraw2DSVG(400, 400)
-    drawer.DrawMolecule(mol)
-    drawer.FinishDrawing()
-    svg = drawer.GetDrawingText()
-    return svg
-
 st.title("Molecule Information")
-st.write("Enter a SMILES code to get molecular information")
+st.write("Enter a SMILES code to get detailed molecular information")
 
 # Example SMILES with descriptions
 with st.expander("See example SMILES codes"):
-    st.write("🌟 **Common Molecules:**")
-    st.code("Aspirin: CC(=O)OC1=CC=CC=C1C(=O)O")
-    st.code("Caffeine: CN1C=NC2=C1C(=O)N(C(=O)N2C)C")
-    st.code("Paracetamol: CC(=O)NC1=CC=C(O)C=C1")
+    st.write("""
+    - Aspirin: `CC(=O)OC1=CC=CC=C1C(=O)O`
+    - Caffeine: `CN1C=NC2=C1C(=O)N(C(=O)N2C)C`
+    - Paracetamol: `CC(=O)NC1=CC=C(O)C=C1`
+    - Ibuprofen: `CC(C)CC1=CC=C(C=C1)[C@H](C)C(=O)O`
+    """)
 
 smiles = st.text_input("Enter SMILES code:", "")
 
@@ -35,31 +26,35 @@ if smiles:
             st.error("Invalid SMILES code. Please try again.")
         else:
             # Calculate properties
-            mw = Descriptors.MolWt(mol)
+            mw = Descriptors.ExactMolWt(mol)
             logp = Descriptors.MolLogP(mol)
             hbd = Descriptors.NumHDonors(mol)
             hba = Descriptors.NumHAcceptors(mol)
             tpsa = Descriptors.TPSA(mol)
+            rotatable_bonds = Descriptors.NumRotatableBonds(mol)
+            rings = Descriptors.RingCount(mol)
+            aromatic_rings = sum(1 for ring in mol.GetRingInfo().AtomRings() if all(mol.GetAtomWithIdx(i).GetIsAromatic() for i in ring))
             
-            # Create two columns
+            # Create columns for layout
             col1, col2 = st.columns(2)
             
-            # Display molecule SVG
+            # Basic Properties
             with col1:
-                st.write("### Molecule Structure")
-                svg = mol_to_svg(mol)
-                st.write(svg, unsafe_allow_html=True)
-            
-            # Display properties
-            with col2:
-                st.write("### Molecular Properties")
-                st.write(f"🏋️ Molar Mass: {mw:.2f} g/mol")
+                st.write("### Basic Properties")
+                st.write(f"🏋️ Molecular Weight: {mw:.2f} g/mol")
                 st.write(f"💧 LogP: {logp:.2f}")
                 st.write(f"🔵 H-Bond Donors: {hbd}")
                 st.write(f"🔴 H-Bond Acceptors: {hba}")
                 st.write(f"📊 TPSA: {tpsa:.2f} Å²")
+                st.write(f"🔄 Rotatable Bonds: {rotatable_bonds}")
+                st.write(f"⭕ Total Rings: {rings}")
+                st.write(f"💫 Aromatic Rings: {aromatic_rings}")
+
+            # Drug-likeness Analysis
+            with col2:
+                st.write("### Drug-likeness Analysis")
                 
-                # Calculate Lipinski's Rule of 5 violations
+                # Lipinski's Rule of 5
                 ro5_violations = sum([
                     mw > 500,
                     logp > 5,
@@ -67,13 +62,48 @@ if smiles:
                     hba > 10
                 ])
                 
-                st.write("\n### Drug-likeness")
-                st.write(f"Lipinski Rule of 5 violations: {ro5_violations}")
-                if ro5_violations <= 1:
-                    st.success("Molecule passes Lipinski's Rule of 5! ✅")
+                st.write("#### Lipinski's Rule of 5")
+                violations = []
+                if mw > 500: violations.append("Molecular weight > 500")
+                if logp > 5: violations.append("LogP > 5")
+                if hbd > 5: violations.append("H-bond donors > 5")
+                if hba > 10: violations.append("H-bond acceptors > 10")
+                
+                if ro5_violations == 0:
+                    st.success("✅ Passes all Lipinski's Rules!")
+                elif ro5_violations == 1:
+                    st.warning(f"⚠️ Has {ro5_violations} violation: {violations[0]}")
                 else:
-                    st.warning("Molecule violates Lipinski's Rule of 5")
+                    st.error(f"❌ Has {ro5_violations} violations:")
+                    for v in violations:
+                        st.write(f"- {v}")
+                
+                # Veber's Rules
+                st.write("#### Veber's Rules")
+                veber_violations = []
+                if rotatable_bonds > 10:
+                    veber_violations.append("Rotatable bonds > 10")
+                if tpsa > 140:
+                    veber_violations.append("TPSA > 140")
+                
+                if not veber_violations:
+                    st.success("✅ Passes Veber's Rules!")
+                else:
+                    st.error("❌ Violations:")
+                    for v in veber_violations:
+                        st.write(f"- {v}")
+                
+                # Lead-likeness
+                st.write("#### Lead-likeness")
+                if 200 <= mw <= 350 and -1 <= logp <= 3:
+                    st.success("✅ Compound is in lead-like space!")
+                else:
+                    st.warning("⚠️ Compound is outside lead-like space")
+            
+            # Chemical Formula
+            formula = AllChem.rdMolDescriptors.CalcMolFormula(mol)
+            st.write(f"### Chemical Formula: {formula}")
 
     except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
+        st.error(f"An error occurred while analyzing the molecule: {str(e)}")
         st.write("Please check your SMILES code and try again.")
