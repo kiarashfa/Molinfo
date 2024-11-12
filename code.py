@@ -1,6 +1,7 @@
 import streamlit as st
 from rdkit import Chem
-from rdkit.Chem import Descriptors, Draw
+from rdkit.Chem import Descriptors
+from rdkit.Chem.Draw import IPythonConsole
 
 st.set_page_config(page_title="Molecular Info", page_icon="🧪", layout="wide")
 
@@ -34,19 +35,10 @@ if smiles:
             hba = Descriptors.NumHAcceptors(mol)
             tpsa = Descriptors.TPSA(mol)
             
-            # Display molecule image
-            with col1:
-                try:
-                    img = Draw.MolToImage(mol)
-                    st.image(img, caption='Molecule Structure', use_column_width=True)
-                except Exception as e:
-                    st.warning("Could not generate molecule image")
-            
-            # Display properties
+            # Display properties first (moving this up since we might have issues with visualization)
             with col2:
                 st.write("### Molecular Properties")
                 
-                # Create a more organized display of properties
                 properties = {
                     "Molar Mass": f"{mw:.2f} g/mol",
                     "LogP": f"{logp:.2f}",
@@ -57,15 +49,37 @@ if smiles:
                 
                 for prop, value in properties.items():
                     st.write(f"**{prop}:** {value}")
+                
+                # Additional calculated properties
+                ro5_violations = sum([
+                    mw > 500,
+                    logp > 5,
+                    hbd > 5,
+                    hba > 10
+                ])
+                
+                st.write("### Drug-likeness")
+                st.write(f"Lipinski Rule of 5 violations: {ro5_violations}")
+                if ro5_violations <= 1:
+                    st.success("Molecule passes Lipinski's Rule of 5! ✅")
+                else:
+                    st.warning("Molecule violates Lipinski's Rule of 5")
 
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
 
-# Add some information at the bottom
+# Add information at the bottom
 st.markdown("""---
-This app uses RDKit to analyze molecular properties from SMILES codes.
-- Molar Mass: The mass of one mole of the substance
-- LogP: Measure of lipophilicity (higher values = more lipophilic)
-- H-Bond Donors/Acceptors: Number of hydrogen bond donors and acceptors
-- TPSA: Topological Polar Surface Area, useful for drug-likeness prediction
+### About the Properties
+- **Molar Mass:** The mass of one mole of the substance (g/mol)
+- **LogP:** Measure of lipophilicity (higher values = more lipophilic)
+- **H-Bond Donors/Acceptors:** Number of hydrogen bond donors and acceptors
+- **TPSA:** Topological Polar Surface Area, useful for drug-likeness prediction
+
+### Lipinski's Rule of 5
+A molecule is more likely to be orally active if it meets these criteria:
+- Molecular weight ≤ 500
+- LogP ≤ 5
+- H-bond donors ≤ 5
+- H-bond acceptors ≤ 10
 """)
